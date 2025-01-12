@@ -1,0 +1,792 @@
+---
+title: "Trabalho Final (AED - 24.1) - Análise de Dados de Educação Superior"
+author: "Marcia Gabriela | Niara Gomes | Matheus Augusto"
+format: revealjs
+editor: visual
+---
+
+# Análise de Dados de Educação Superior
+
+## Introdução
+
+Este documento fornece uma avaliação fundamentada nas informações sobre o fluxo do ensino superior no Brasil. A avaliação concentrou-se nas variáveis desistências, permanências (valores absolutos e taxas percentuais) e correlações entre as variáveis. Foram criados insights com relação à:
+
+-   Cursos de Graduação;
+
+-   Instituições de Ensino;
+
+-   Unidade Federativa;
+
+-   Região;
+
+-   Tipo de Administração;
+
+-   Modalidade de Ensino;
+
+## Pacotes utilizados
+
+```{r pacotes}
+#instalação
+#install.packages("readxl")    # Para ler arquivos Excel
+#install.packages("tidyverse") # Para manipular e visualizar os dados
+#install.packages("rmarkdown") # Para criar o relatório
+#install.packages("dplyr") #para manipular e transformar dados
+#install.packages("ggplot2") #para criar os gráficos
+
+#carregamento
+library(readxl) 
+library(tidyverse) 
+library(dplyr) 
+library(ggplot2)
+```
+
+## Leitura, limpeza e tratamento dos dados
+
+```{r leitura_limpeza}
+#leitura dos dados 
+dados <- read_excel("C:/Users/matta/OneDrive/Desktop/AED_R/indicadores_fluxo_es_2014-2023/indicadores_trajetoria_educacao_superior_2014_2023.xlsx") 
+
+dados <- dados[-1,] #removendo a primeira linha
+dados <- dados[-nrow(dados),] #removendo a ultima linha/rodapé
+
+# Removendo as colunas desnecessárias para nossa análise
+dadosLimpos <- dados |> select(-c(1, 4, 5, 9, 10, 12, 13, 14, 16, 19, 26, 27, 28, 29, 30, 31))
+
+```
+
+```{r tratamento}
+
+#mudanco os dados das colunas numericas sobre: modalidade de ensino, região, UF, tipo de ADM 
+
+#CRIANDO A COLUNA DE MODALIDADE DE ENSINO:
+dadosLimpos <- dadosLimpos %>%
+  mutate(
+    `Modalidade de Ensino` = recode(`Modalidade de Ensino`, 
+                                    `1` = "Presencial",
+                                    `2` = "Curso a distância")
+  )
+
+
+dadosLimpos <- dadosLimpos %>%
+  mutate(
+    `Código da Região Geográfica do Curso` = recode(`Código da Região Geográfica do Curso`, 
+                                    `1` = "Região Norte",
+                                    `2` = "Região Nordeste",
+                                    `3` = "Região Sudeste",
+                                    `4` = "Região Sul",
+                                    `5` = "Região Centro-Oeste",
+    )
+  )
+
+
+#renomeando o nome da coluna:
+dadosLimpos <- dadosLimpos %>%
+  rename(`Região do Curso` = `Código da Região Geográfica do Curso`)
+
+
+#INSERINDO A COLUNA COM NOME DA UF
+dadosLimpos <- dadosLimpos %>%
+  mutate(
+    `Código da Unidade Federativa do Curso` = recode(`Código da Unidade Federativa do Curso`, 
+                     '11' = "Rondônia (RO)",
+                     '12' = "Acre (AC)",
+                     '13' = "Amazonas (AM)",
+                     '14' = "Roraima (RR)",
+                     '15' = "Pará (PA)",
+                     '16' = "Amapá (AP)",
+                     '17' = "Tocantis (TO)",
+                     '21' = "Maranhão (MA)",
+                     '22' = "Piauí (PI)",
+                     '23' = "Ceará (CE)",
+                     '24' = "Rio Grande do Norte (RN)",
+                     '25' = "Paraíba (PB)",
+                     '26' = "Pernambuco (PE)",
+                     '27' = "Alagoas (AL)",
+                     '28' = "Sergipe (SE)",
+                     '29' = "Bahia (BA)",
+                     '31' = "Minas Gerais (MG)",
+                     '32' = "Espírito Santo (ES)",
+                     '33' = "Rio de Janeiro (RJ)",
+                     '35' = "São Paulo (SP)",
+                     '41' = "Paraná (PR)",
+                     '42' = "Santa Catarina (SC)",
+                     '43' = "Rio Grande do Sul (RS)",
+                     '50' = "Mato Grosso do Sul (MS)",
+                     '51' = "Mato Grosso (MT)",
+                     '52' = "Goiás (GO)",
+                     '53' = "Distrito Federal (DF)")
+  )
+
+
+#renomeando o nome da coluna:
+dadosLimpos <- dadosLimpos %>%
+  rename(`Unidade Federativa do Curso` = `Código da Unidade Federativa do Curso`)
+
+
+dadosLimpos <- dadosLimpos %>%
+  mutate(
+    `Categoria Administrativa` = recode(`Categoria Administrativa`, 
+                      '1' = "Pública Federal",
+                      '2' = "Pública Estadual",
+                      '3' = "Pública Municipal",
+                      '4' = "Privada com fins lucrativos",
+                      '5' = "Privada sem fins lucrativos",
+                      '7' = "Especial"))
+```
+
+## Distribuição das variáveis numéricas
+
+```{r boxplots}
+numeric_columns <- dadosLimpos[sapply(dadosLimpos, is.numeric)]
+
+for (col in names(numeric_columns)) {
+  valores <- numeric_columns[[col]]  #extraindo os valores da coluna
+  
+  boxplot(valores,
+          main = paste("Boxplot -", col),
+          col = "lightblue",
+          ylab = "Valores",
+          xlab = col,
+          ylim = range(valores, na.rm = TRUE))  #ajusta o eixo y aos valores
+}
+```
+
+## Perguntas e Respostas
+
+#### 1) Quais cursos apresentam as maiores desistências (valor absoluto e percentual).
+
+```{r curso_resumo}
+curso_resumo <- dadosLimpos %>%
+  group_by(`Nome do Curso de Graduação`) %>%
+  summarize(
+    prazo_medio_acompanhamento_curso = round(mean(`Prazo de Acompanhamento do Curso em anos`, na.rm = TRUE), digits = 2),
+    total_desistencias = sum(`Quantidade de Desistência no Curso no ano de referência`, na.rm = TRUE),
+    total_permanencia = sum(`Quantidade de Permanência no Curso no ano de referência`, na.rm = TRUE), 
+    total_ingressantes = sum(`Quantidade de Ingressantes no Curso`, na.rm = TRUE),
+    percent_desistencia = round((total_desistencias / total_ingressantes)*100, digits = 2),
+    percent_permanencias = round((total_permanencia / total_ingressantes)*100, digits = 2)
+  ) %>%
+  arrange(desc(total_desistencias)) #ordenando pela coluna de desistencias
+
+curso_resumo$total_desistencias <- format(curso_resumo$total_desistencias, big.mark = ".", decimal.mark = ",")
+curso_resumo$total_permanencia <- format(curso_resumo$total_permanencia, big.mark = ".", decimal.mark = ",")
+curso_resumo$total_ingressantes <- format(curso_resumo$total_ingressantes, big.mark = ".", decimal.mark = ",")
+```
+
+```{r resposta1_1}
+menor_permanencia <- curso_resumo |> 
+  arrange(desc(total_desistencias))
+
+#criando o top 10 maior qtde de desistencia por curso
+top10_curso_maior_desistencia <- menor_permanencia %>% slice(1:10)
+
+#Plotando o grafico de rank
+ggplot(top10_curso_maior_desistencia, aes(x = reorder(`Nome do Curso de Graduação`, -desc(total_desistencias)), y = total_desistencias)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = total_desistencias), 
+            position = position_stack(vjust = 0.5),
+            color = "white",
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Top 10 Maior Quantidade de Desistência por Faculdade",
+    x = "Curso",
+    y = "Desistências"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 45, hjust = 1, size = 8))
+```
+
+```{r resposta1_2}
+#percentual
+cursos_maior_percent_Desistencias <- curso_resumo %>%
+  arrange(desc(percent_desistencia))
+
+cursos_maior_percent_Desistencias
+```
+
+#### 2) Quais cursos apresentam as maiores permanências (valor absoluto e percentual).
+
+```{r resposta2_1}
+# Curso com menor quantidade de desistência (0) - agrupamento das ocorrencias de cursos sem desistencias 
+
+curso_menorDesistencias <- dadosLimpos %>%
+  filter(`Quantidade de Desistência no Curso no ano de referência` == 0) %>% #filtra os cursos com desistência igual a 0
+  group_by(`Nome do Curso de Graduação`) %>%
+  summarise(frequencia_curso = n()) %>% #'n()' conta o número de linhas em cada grupo
+  arrange(desc(frequencia_curso))
+
+curso_menorDesistencias
+
+```
+
+```{r resposta2_2}
+maior_permanencia <- curso_resumo |> 
+  arrange(desc(total_permanencia))
+
+#criando o top 10 maior qtde de desistencia por curso
+top10_curso_maior_permanencia <- maior_permanencia %>% slice(1:10)
+
+ggplot(top10_curso_maior_permanencia, aes(x = reorder(`Nome do Curso de Graduação`, -desc(total_permanencia)), y = total_permanencia)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = total_permanencia), position = position_stack(vjust = 0.5),
+            color = "white",
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Top 10 Maior Quantidade de Permanência por Faculdade",
+    x = "Curso",
+    y = "Permanências"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 45, hjust = 1, size = 8))
+```
+
+#### 3) Quais instituições apresentam as maiores desistências (valor absoluto e percentual).
+
+```{r resumo_faculdade}
+faculdade_resumo <- dadosLimpos %>%
+  group_by(`Nome da Instituição`) %>%
+  summarize(
+    prazo_medio_acompanhamento_universidade = round(mean(`Prazo de Acompanhamento do Curso em anos`, na.rm = TRUE), digits = 2),
+    total_desistencias = sum(`Quantidade de Desistência no Curso no ano de referência`, na.rm = TRUE),
+    total_permanencia = sum(`Quantidade de Permanência no Curso no ano de referência`, na.rm = TRUE),
+    total_ingressantes = sum(`Quantidade de Ingressantes no Curso`, na.rm = TRUE),
+    percent_desistencia = round((total_desistencias / total_ingressantes)*100),
+    percent_permanencias = round((total_permanencia / total_ingressantes)*100)
+  ) %>%
+  arrange(desc(total_desistencias)) #ordenando pela coluna de desistencias
+
+faculdade_resumo$total_desistencias <- format(faculdade_resumo$total_desistencias, big.mark = ".", decimal.mark = ",")
+faculdade_resumo$total_permanencia <- format(faculdade_resumo$total_permanencia, big.mark = ".", decimal.mark = ",")
+faculdade_resumo$total_ingressantes <- format(faculdade_resumo$total_ingressantes, big.mark = ".", decimal.mark = ",")
+```
+
+```{r resposta3_1}
+faculdade_menor_percent_permanencia <- faculdade_resumo %>%
+  arrange((percent_permanencias))
+
+faculdade_menor_percent_permanencia
+```
+
+```{r resposta3_2}
+faculdade_menor_permanencia <- faculdade_resumo %>%
+  arrange((total_permanencia))
+
+#criando o top 10 da faculdade
+top10_faculdade_menor_permanencia <- faculdade_menor_permanencia %>% slice(1:10)
+
+#Plotando o grafico de rank
+ggplot(top10_faculdade_menor_permanencia, aes(x = reorder(`Nome da Instituição`, desc(total_permanencia)), y = total_permanencia)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = total_permanencia), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Top 10 Menor Permanência por Faculdade",
+    x = "Faculdade",
+    y = "Permanências"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+#### 4) Quais instituições apresentam as maiores permanências (valor absoluto e percentual).
+
+```{r respostas4_1}
+faculdade_maior_percent_permanencia <- faculdade_resumo %>%
+  arrange(desc(percent_permanencias))
+
+top10_faculdade_taxa_permanencia <- faculdade_maior_percent_permanencia %>% slice(1:10)
+
+#Plotando o grafico de rank
+ggplot(top10_faculdade_taxa_permanencia, aes(x = reorder(`Nome da Instituição`, -desc(percent_permanencias)), y = percent_permanencias)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = percent_permanencias), 
+            position = position_stack(vjust = 0.5),
+            color = "white",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Top 10 Maior Taxa Permanência por Faculdade",
+    x = "Faculdade",
+    y = "Taxa Permanência (%)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+```{r respostas4_2}
+faculdade_maior_permanencia <- faculdade_resumo %>%
+  arrange(desc(total_permanencia))
+
+#criando o top 10 da faculdade
+top10_faculdade_maior_permanencia <- faculdade_maior_permanencia %>% slice(1:10)
+
+#Plotando o grafico de rank
+ggplot(top10_faculdade_maior_permanencia, aes(x = reorder(`Nome da Instituição`, -desc(total_permanencia)), y = total_permanencia)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = total_permanencia), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Top 10 Maior Permanência por Faculdade",
+    x = "Faculdade",
+    y = "Permanências"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 45, hjust = 1, size = 8))
+
+```
+
+#### 5) Quais UF's apresentam as maiores desistências (valor absoluto e percentual).
+
+```{r uf_resumo}
+uf_resumo <- dadosLimpos %>%
+  filter(!is.na(`Unidade Federativa do Curso`)) %>%
+  group_by(`Unidade Federativa do Curso`) %>%
+  summarize(
+    prazo_medio_acompanhamento_universidade = round(mean(`Prazo de Acompanhamento do Curso em anos`, na.rm = TRUE), digits = 2),
+    total_desistencias = sum(`Quantidade de Desistência no Curso no ano de referência`, na.rm = TRUE),
+    total_permanencia = sum(`Quantidade de Permanência no Curso no ano de referência`, na.rm = TRUE),
+    total_ingressantes = sum(`Quantidade de Ingressantes no Curso`, na.rm = TRUE),
+    percent_desistencia = round((total_desistencias / total_ingressantes)*100),
+    percent_permanencias = round((total_permanencia / total_ingressantes)*100)
+  ) %>%
+  arrange(desc(total_desistencias)) #ordenando pela coluna de desistencias
+
+#formatando os valores de milhares para inserir os separadores (.)
+uf_resumo$total_desistencias <- format(uf_resumo$total_desistencias, big.mark = ".", decimal.mark = ",")
+uf_resumo$total_permanencia <- format(uf_resumo$total_permanencia, big.mark = ".", decimal.mark = ",")
+uf_resumo$total_ingressantes <- format(uf_resumo$total_ingressantes, big.mark = ".", decimal.mark = ",")
+```
+
+```{r resultado5_1}
+uf_maior_taxa_desistencia <- uf_resumo %>%
+  arrange(desc(percent_desistencia))
+
+uf_maior_taxa_desistencia
+```
+
+```{r resultado5_2}
+uf_maior_desistencia <- uf_resumo %>%
+  arrange(desc(total_desistencias))
+
+#criando o top 10 da região
+top10_uf_desistencia <- uf_maior_desistencia %>% slice(1:10)
+
+#Plotando o grafico de rank
+ggplot(top10_uf_desistencia, aes(x = reorder(`Unidade Federativa do Curso`, -desc(total_desistencias)), y = total_desistencias)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = total_desistencias), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Top 10 Desistências por UF",
+    x = "UF",
+    y = "Desistências"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+#### 6) Quais UF's apresentam as maiores permanências (valor absoluto e percentual).
+
+```{r resultados6_1}
+uf_maior_taxa_permanencia <- uf_resumo %>%
+  arrange(desc(percent_permanencias))
+
+top10_uf_taxa_permanencia <- uf_maior_taxa_permanencia %>% slice(1:10)
+
+ggplot(top10_uf_taxa_permanencia, aes(x = reorder(`Unidade Federativa do Curso`, -desc(percent_permanencias)), y = percent_permanencias)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = percent_permanencias), 
+            position = position_stack(vjust = 0.5),
+            color = "white",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Top 10 Maior Taxa Permanência por Região",
+    x = "UF",
+    y = "Taxa Permanência (%)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+```{r resultados6_2}
+uf_maior_permanencia <- uf_resumo %>%
+  arrange(desc(total_permanencia))
+
+#criando o top 10 da região
+top10_uf <- uf_maior_permanencia %>% slice(1:10)
+
+ggplot(top10_uf, aes(x = reorder(`Unidade Federativa do Curso`, -desc(total_permanencia)), y = total_permanencia)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = total_permanencia), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Top 10 Permanências por UF",
+    x = "UF",
+    y = "Permanências"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+#### 7) Rank de desistências (valor absoluto) por tipo de ADM.
+
+```{r adm_resumo}
+adm_resumo <- dadosLimpos %>%
+  group_by(`Categoria Administrativa`) %>%
+  summarize(
+    prazo_medio_acompanhamento_curso = round(mean(`Prazo de Acompanhamento do Curso em anos`, na.rm = TRUE), digits = 2),
+    total_desistencias = sum(`Quantidade de Desistência no Curso no ano de referência`, na.rm = TRUE),
+    total_permanencia = sum(`Quantidade de Permanência no Curso no ano de referência`, na.rm = TRUE),
+    total_ingressantes = sum(`Quantidade de Ingressantes no Curso`, na.rm = TRUE),
+    percent_desistencia = round((total_desistencias / total_ingressantes)*100, digits = 2),
+    percent_permanencias = round((total_permanencia / total_ingressantes)*100, digits = 2)
+  ) %>%
+  arrange(desc(total_desistencias)) #ordenando pela coluna de desistencias
+
+#formatando os valores de milhares para inserir os separadores (.)
+adm_resumo$total_desistencias <- format(adm_resumo$total_desistencias, big.mark = ".", decimal.mark = ",")
+adm_resumo$total_permanencia <- format(adm_resumo$total_permanencia, big.mark = ".", decimal.mark = ",")
+adm_resumo$total_ingressantes <- format(adm_resumo$total_ingressantes, big.mark = ".", decimal.mark = ",")
+```
+
+```{r resposta9_1}
+adm_maior_desistencia <- adm_resumo %>%
+  arrange(desc(total_desistencias))
+
+rank_adm_menor <- adm_maior_desistencia %>% slice(1:10)
+
+ggplot(rank_adm_menor, aes(x = reorder(`Categoria Administrativa`, -desc(total_desistencias)), y = total_desistencias)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = total_desistencias), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Total de Desistência por Tipo Administrativo",
+    x = "Tipo Administrativo",
+    y = "Desistências"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+
+```
+
+#### 8) Rank de permanências (valor absoluto e taxa) por tipo de ADM.
+
+```{r resposta10_1}
+adm_maior_permanencia <- adm_resumo %>%
+  arrange(desc(total_permanencia))
+
+rank_adm <- adm_maior_permanencia %>% slice(1:10)
+
+ggplot(rank_adm, aes(x = reorder(`Categoria Administrativa`, -desc(total_permanencia)), y = total_permanencia)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = total_permanencia), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Total de Permanência por Tipo Administrativo",
+    x = "Tipo Administrativo",
+    y = "Permanências"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+```{r resposta10_2}
+adm_maior_taxa_permanencia <- adm_resumo %>%
+  arrange(desc(percent_permanencias))
+
+rank_adm_taxa <- adm_maior_taxa_permanencia %>% slice(1:10)
+
+ggplot(rank_adm_taxa, aes(x = reorder(`Categoria Administrativa`, -desc(percent_permanencias)), y = percent_permanencias)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = percent_permanencias), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Taxas de Permanência por Tipo Administrativo",
+    x = "Tipo Administrativo",
+    y = "Taxa Permanência (%)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+#### 9) Desistências (valor absoluto e taxa) por modalidade de ensino.
+
+```{r modalidade_resumo}
+modalidade_resumo <- dadosLimpos %>%
+  group_by(`Modalidade de Ensino`) %>%
+  summarize(
+    prazo_medio_acompanhamento_curso = round(mean(`Prazo de Acompanhamento do Curso em anos`, na.rm = TRUE), digits = 2),
+    total_desistencias = sum(`Quantidade de Desistência no Curso no ano de referência`, na.rm = TRUE),
+    total_permanencia = sum(`Quantidade de Permanência no Curso no ano de referência`, na.rm = TRUE),
+    total_ingressantes = sum(`Quantidade de Ingressantes no Curso`, na.rm = TRUE),
+    percent_desistencia = round((total_desistencias / total_ingressantes)*100, digits = 2),
+    percent_permanencias = round((total_permanencia / total_ingressantes)*100, digits = 2)
+  ) %>%
+  arrange(desc(total_desistencias)) #ordenando pela coluna de desistencias
+
+#formatando os valores de milhares para inserir os separadores (.)
+modalidade_resumo$total_desistencias <- format(modalidade_resumo$total_desistencias, big.mark = ".", decimal.mark = ",")
+modalidade_resumo$total_permanencia <- format(modalidade_resumo$total_permanencia, big.mark = ".", decimal.mark = ",")
+modalidade_resumo$total_ingressantes <- format(modalidade_resumo$total_ingressantes, big.mark = ".", decimal.mark = ",")
+```
+
+```{r resultado11_1}
+modalidade_desistencias <- modalidade_resumo %>%
+  arrange(desc(total_desistencias))
+
+ggplot(modalidade_desistencias, aes(x = reorder(`Modalidade de Ensino`, -desc(total_desistencias)), y = total_desistencias)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = total_desistencias), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Desistências por Modalidade",
+    x = "Modalidade",
+    y = "Desistências"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+```{r resultado11_2}
+modalidade_desistencias_taxa <- modalidade_resumo %>%
+  arrange(desc(percent_desistencia))
+
+ggplot(modalidade_desistencias_taxa, aes(x = reorder(`Modalidade de Ensino`, -desc(percent_desistencia)), y = percent_desistencia)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = percent_desistencia), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Taxa de Desistência por Modalidade",
+    x = "Modalidade",
+    y = "Taxa Desistência (%)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+#### 10) Permanências (valor absoluto e taxa) por modalidade de ensino.
+
+```{r resultado12_1}
+modalidade_permanencias <- modalidade_resumo %>%
+  arrange(desc(total_permanencia))
+
+ggplot(modalidade_permanencias, aes(x = reorder(`Modalidade de Ensino`, -desc(total_permanencia)), y = total_permanencia)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = total_permanencia), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Permanências por Modalidade",
+    x = "Modalidade",
+    y = "Permanências"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+```{r resultado12_2}
+modalidade_permanencias_taxa <- modalidade_resumo %>%
+  arrange(desc(percent_permanencias))
+
+ggplot(modalidade_permanencias_taxa, aes(x = reorder(`Modalidade de Ensino`, -desc(percent_permanencias)), y = percent_permanencias)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = percent_permanencias), 
+            position = position_stack(vjust = 0.5),
+            color = "black",
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +  # Inverte os eixos para facilitar a leitura
+  labs(
+    title = "Taxa de Permanência por Modalidade",
+    x = "Modalidade",
+    y = "Taxa Permanência (%)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  theme(
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 8))
+```
+
+## Correlações entre as variáveis
+
+-   Instituições de Ensino;
+
+    ```{r correlacao_instituicao}
+    ggplot(dadosLimpos, aes(x = `Quantidade de Desistência no Curso no ano de referência`, y = `Quantidade de Permanência no Curso no ano de referência`, color = `Categoria Administrativa`)) +
+      geom_point(size = 3) +  
+      geom_smooth(method = "lm", se = FALSE, color = "black") + #adicionando a linha de regressão linear
+      labs(
+        title = "Gráfico de Dispersão por Tipo de Instituição",
+        x = "Desistências",
+        y = "Permanências",
+        color = "Tipo de Instituição"
+      ) +
+      theme_minimal() +
+      facet_wrap(~ `Categoria Administrativa`, ncol = 2)  
+    ```
+
+-   Região;
+
+    ```{r correlacao_regiao}
+    #FAZENDO CORRELAÇÃO ENTRE DESISTENCIA, PERMANENCIA E REGIÃO
+    ggplot(dadosLimpos, aes(x = `Quantidade de Desistência no Curso no ano de referência`, y = `Quantidade de Permanência no Curso no ano de referência`, color = `Região do Curso`)) +
+      geom_point(size = 3) +  
+      geom_smooth(method = "lm", se = FALSE, color = "black") + #adicionando a linha de regressão linear
+      labs(
+        title = "Gráfico de Dispersão pela Região do Curso",
+        x = "Desistências",
+        y = "Permanências",
+        color = "Região"
+      ) +
+      theme_minimal() +
+      facet_wrap(~ `Região do Curso`, ncol = 2)  
+
+    #RESULTOU EM MUITOS NA's - PROVAVELMENTE DEVIDO AOS CURSOS REMOTOS
+    ```
+
+    #### Retirando os valores NA's da visualização
+
+    ```{r correlacao_regiao_sem_na}
+    #retirando os NA's e refazendo
+    dados_sem_na <- dadosLimpos %>%
+      filter(!is.na(`Região do Curso`))
+
+    ggplot(dados_sem_na, aes(x = `Quantidade de Desistência no Curso no ano de referência`, y = `Quantidade de Permanência no Curso no ano de referência`, color = `Região do Curso`)) +
+      geom_point(size = 3) +  
+      geom_smooth(method = "lm", se = FALSE, color = "black") + #adicionando a linha de regressão linear
+      labs(
+        title = "Gráfico de Dispersão pela Região do Curso",
+        x = "Desistências",
+        y = "Permanências",
+        color = "Região"
+      ) +
+      theme_minimal() +
+      facet_wrap(~ `Região do Curso`, ncol = 2)  
+    ```
+
+    ## 
+
+-   Tipo de Administração;
+
+    ```{r correlacao_tipoADM}
+    ggplot(dadosLimpos, aes(x = `Quantidade de Desistência no Curso no ano de referência`, y = `Quantidade de Permanência no Curso no ano de referência`, color = `Categoria Administrativa`)) +
+      geom_point(size = 3) +  
+      geom_smooth(method = "lm", se = FALSE, color = "black") + #adicionando a linha de regressão linear
+      labs(
+        title = "Gráfico de Dispersão pela Categoria Administrativa",
+        x = "Desistências",
+        y = "Permanências",
+        color = "Categoria Administrativa"
+      ) +
+      theme_minimal() +
+      facet_wrap(~ `Categoria Administrativa`, ncol = 2)
+
+    ```
+
+-   Modalidade de Ensino;
+
+    ```{r correlacao_modalidadeEnsino}
+    ggplot(dadosLimpos, aes(x = `Quantidade de Desistência no Curso no ano de referência`, y = `Quantidade de Permanência no Curso no ano de referência`, color = `Modalidade de Ensino`)) +
+      geom_point(size = 3) +  
+      geom_smooth(method = "lm", se = FALSE, color = "black") + #adicionando a linha de regressão linear
+      labs(
+        title = "Gráfico de Dispersão pela Modalidade do Curso",
+        x = "Desistências",
+        y = "Permanências",
+        color = "Modalidade de Ensino"
+      ) +
+      theme_minimal() +
+      facet_wrap(~ `Modalidade de Ensino`, ncol = 2)  
+    ```
+
+## Conclusão
+
+Este documento analisou informações sobre o fluxo da educação superior no Brasil, examinando aspectos como índices de abandono e taxa de retenção, além da conexão entre esses indicadores e variáveis institucionais e regionais. Foram produzidos insights significativos, incluindo:
+
+1.  **Normas por tipo de ensino:** Verificou-se o impacto de diversas modalidades na taxa de permanência e abandono, ressaltando os obstáculos particulares do ensino à distância em relação ao presencial.
+
+2.  **Efeito da categoria administrativa:** A análise entre instituições públicas e privadas evidenciou tendências distintas no número de novos alunos, permanências e abandonos, espelhando aspectos estruturais e operacionais.
+
+3.  **Distribuição regional:** As avaliações regionais revelaram disparidades notáveis, sugerindo que as circunstâncias socioeconômicas e geográficas influenciam o rendimento escolar.
+
+4.  **Relação entre variáveis:** A pesquisa detectou conexões significativas, como a correlação entre desistências e retenções, oferecendo uma perspectiva mais unificada dos obstáculos que as instituições de ensino superior enfrentam.
+
+Os achados apresentados constituem um ponto de partida para investigações mais detalhadas. Análises futuras podem abranger:
+
+-   Análise de tendências temporais, examinando a evolução dos padrões ao longo dos anos.
+-   Elementos socioeconômicos externos que afetam o rendimento escolar.
+-   Pesquisas qualitativas acerca do efeito de recentes políticas governamentais no ensino superior.
+
+O documento destaca a relevância de políticas educacionais focadas, particularmente para modalidades e áreas com altos índices de abandono escolar, auxiliando na administração mais eficaz dos recursos educacionais no Brasil.
